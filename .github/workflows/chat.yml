@@ -1,4 +1,4 @@
-name: 与昔涟对话 (GitHub Models 版)
+name: 与昔涟对话 (Copilot CLI 版)
 
 on:
   workflow_dispatch:
@@ -7,11 +7,6 @@ on:
         description: '请输入你想对昔涟说的话'
         required: true
         default: '你好，我是开拓者，你是谁？'
-
-# 关键：必须声明 models 权限，GITHUB_TOKEN 才能调用模型
-permissions:
-  contents: read
-  models: read
 
 jobs:
   chat:
@@ -27,16 +22,27 @@ jobs:
           echo "$SKILL_CONTENT" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      # 使用 GitHub 官方 AI 推理 Action，无需 API Key
-      - name: Call GitHub Models
-        id: ai
-        uses: actions/ai-inference@v1
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          model: 'openai/gpt-4o-mini'
+          node-version: '20'
+
+      # 1. 安装 Copilot CLI
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      # 2. 使用 v3 版本进行推理
+      - name: Run AI Inference
+        id: ai
+        uses: actions/ai-inference@v3
+        with:
+          model: 'gpt-4.1'
           system-prompt: |
             你现在扮演昔涟。以下是你的角色设定：
             ${{ env.skill }}
           prompt: ${{ github.event.inputs.prompt }}
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
 
       - name: Print Response
         run: |
