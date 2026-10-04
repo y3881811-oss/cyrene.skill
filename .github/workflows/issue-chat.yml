@@ -1,4 +1,4 @@
-name: 昔涟 Issue 聊天室
+name: 昔涟 Issue 聊天室（带记忆版）
 
 on:
   issue_comment:
@@ -6,7 +6,7 @@ on:
 
 permissions:
   contents: read
-  issues: write   # 必须要有这个权限，才能把 AI 的回复发到评论区
+  issues: write
 
 jobs:
   reply:
@@ -17,7 +17,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 把 Skill 文件复制成 skill.txt
       - name: Read Skill
         run: |
           if [ -f "SKILL.md" ]; then
@@ -26,34 +25,41 @@ jobs:
             cp README.md skill.txt
           fi
 
+      # 新增：获取历史评论并格式化为 AI 能读懂的上下文
+      - name: Fetch History
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_USER: ${{ github.event.issue.user.login }}
+        run: |
+          # 1. 拉取该 Issue 下的所有评论（--paginate 确保拉取全部，不怕评论多）
+          gh api repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments --paginate > comments.json
+          
+          # 2. 用 jq 过滤并转换为大模型需要的格式 (user / assistant 交替)
+          # 只保留你本人的发言(role: user) 和 AI 的回复(role: assistant)，过滤掉无关内容
+          jq -c '[.[] | select(.user.login == env.ISSUE_USER or .user.login == "github-actions[bot]") | {role: (if .user.login == env.ISSUE_USER then "user" else "assistant" end), content: .body}]' comments.json > history.json
+
       - name: Call Free AI
         env:
           API_KEY: ${{ secrets.LLM_API_KEY }}
-          USER_INPUT: ${{ github.event.comment.body }}
         run: |
-          # 用 jq 安全读取 Skill 和你的评论，组合成 API 请求体
-          JSON_PAYLOAD=$(jq -n --rawfile sys skill.txt --arg user "$USER_INPUT" '
-            {
-              model: "glm-4.7-flash",
-              messages: [
-                {role: "system", content: ("你现在扮演昔涟。以下是你的角色设定：\n" + $sys)},
-                {role: "user", content: $user}
-              ]
-            }
-          ')
+          # 用 jq 把 System Prompt（Skill）和完整的对话历史拼在一起
+          # --slurpfile 会把 history.json 当作一个数组读入，并完美处理各种特殊字符
+          jq -n --rawfile sys skill.txt --slurpfile history history.json '{
+            model: "glm-4.7-flash",
+            messages: ([{role: "system", content: ("你现在扮演昔涟。以下是你的角色设定：\n" + $sys)}] + $history[0])
+          }' > payload.json
           
-          # 发送请求
-          RESPONSE=$(curl -s https://open.bigmodel.cn/api/paas/v4/chat/completions \
+          # 发送请求（直接从文件读取 payload）
+          curl -s https://open.bigmodel.cn/api/paas/v4/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $API_KEY" \
-            -d "$JSON_PAYLOAD")
+            -d @payload.json > response.json
           
-          # 提取 AI 回复，并保存到临时文件（用文件方式传递，避免特殊字符报错）
-          echo "$RESPONSE" | jq -r '.choices[0].message.content' > reply.md
+          # 提取 AI 回复
+          jq -r '.choices[0].message.content' response.json > reply.md
 
       - name: Reply to Issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 把回复作为评论发到 Issue 里
           gh issue comment ${{ github.event.issue.number }} --body-file reply.md
