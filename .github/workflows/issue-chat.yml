@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   reply:
-    # 安全限制：只有创建这个 Issue 的人自己评论，才会触发回复
+    # 只有创建这个 Issue 的人自己评论，才会触发回复（防止别人刷你的额度）
     if: github.event.comment.user.login == github.event.issue.user.login
     runs-on: ubuntu-latest
     steps:
@@ -25,38 +25,42 @@ jobs:
             cp README.md skill.txt
           fi
 
-      # 新增：获取历史评论并格式化为 AI 能读懂的上下文
       - name: Fetch History
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_USER: ${{ github.event.issue.user.login }}
         run: |
-          # 1. 拉取该 Issue 下的所有评论（--paginate 确保拉取全部，不怕评论多）
+          # 拉取该 Issue 下的所有评论
           gh api repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments --paginate > comments.json
           
-          # 2. 用 jq 过滤并转换为大模型需要的格式 (user / assistant 交替)
-          # 只保留你本人的发言(role: user) 和 AI 的回复(role: assistant)，过滤掉无关内容
+          # 过滤出你和机器人的对话，按顺序拼成多轮对话格式 (user -> assistant)
           jq -c '[.[] | select(.user.login == env.ISSUE_USER or .user.login == "github-actions[bot]") | {role: (if .user.login == env.ISSUE_USER then "user" else "assistant" end), content: .body}]' comments.json > history.json
 
       - name: Call Free AI
         env:
           API_KEY: ${{ secrets.LLM_API_KEY }}
         run: |
-          # 用 jq 把 System Prompt（Skill）和完整的对话历史拼在一起
-          # --slurpfile 会把 history.json 当作一个数组读入，并完美处理各种特殊字符
+          # 组装请求体：System Prompt + 完整历史记录
           jq -n --rawfile sys skill.txt --slurpfile history history.json '{
             model: "glm-4.7-flash",
             messages: ([{role: "system", content: ("你现在扮演昔涟。以下是你的角色设定：\n" + $sys)}] + $history[0])
           }' > payload.json
           
-          # 发送请求（直接从文件读取 payload）
+          # 发送请求并保存响应
           curl -s https://open.bigmodel.cn/api/paas/v4/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $API_KEY" \
             -d @payload.json > response.json
           
-          # 提取 AI 回复
-          jq -r '.choices[0].message.content' response.json > reply.md
+          # 兜底逻辑：如果成功拿到了回复，就写进 reply.md；如果失败了，把原始错误拼进 reply.md，防止出现 null
+          if jq -e '.choices[0].message.content' response.json > /dev/null; then
+            jq -r '.choices[0].message.content' response.json > reply.md
+          else
+            echo "⚠️ **API 调用失败，以下是原始报错信息：**" > reply.md
+            echo '```json' >> reply.md
+            cat response.json >> reply.md
+            echo '```' >> reply.md
+          fi
 
       - name: Reply to Issue
         env:
