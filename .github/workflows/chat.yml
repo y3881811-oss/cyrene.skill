@@ -1,4 +1,4 @@
-name: 与昔涟对话 (GitHub Copilot 免费版)
+name: 与昔涟对话 (Copilot Free 版)
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
 
 permissions:
   contents: read
-  copilot-requests: write  # 允许 Copilot CLI 计费到你的账户
+  copilot-requests: write
 
 jobs:
   chat:
@@ -21,7 +21,6 @@ jobs:
 
       - name: Read Skill
         run: |
-          # 注意：确认你的 skill 文件确实叫 SKILL.md，如果叫别的名字请修改这里
           if [ -f "SKILL.md" ]; then
             SKILL_CONTENT=$(cat SKILL.md)
           else
@@ -49,10 +48,7 @@ jobs:
             ${{ env.skill }}
           prompt: ${{ github.event.inputs.prompt }}
         env:
-          # 关键：把内置的 GitHub Token 显式传递为 Copilot CLI 认可的变量
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_TOKEN: ${{ github.token }}
-          COPILOT_GITHUB_TOKEN: ${{ github.token }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
 
       - name: Print Response
         run: |
