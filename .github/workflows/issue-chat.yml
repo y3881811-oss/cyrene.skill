@@ -1,4 +1,4 @@
-name: Call Free AI
+- name: Call Free AI
   env:
     API_KEY: ${{ secrets.LLM_API_KEY }}
   run: |
