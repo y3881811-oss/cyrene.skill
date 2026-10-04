@@ -1,4 +1,4 @@
-name: 与昔涟对话 (Copilot CLI 版)
+name: 与昔涟对话 (GitHub Models 版)
 
 on:
   workflow_dispatch:
@@ -8,6 +8,11 @@ on:
         required: true
         default: '你好，我是开拓者，你是谁？'
 
+# 关键1：必须声明 copilot-requests 权限，才能使用 GITHUB_TOKEN 调用模型
+permissions:
+  contents: read
+  copilot-requests: write
+
 jobs:
   chat:
     runs-on: ubuntu-latest
@@ -15,6 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 读取根目录下的 Skill 文件（如果是 README.md，请修改下一行）
       - name: Read Skill
         run: |
           SKILL_CONTENT=$(cat SKILL.md)
@@ -27,11 +33,11 @@ jobs:
         with:
           node-version: '20'
 
-      # 1. 安装 Copilot CLI
+      # 安装 Copilot CLI
       - name: Install Copilot CLI
         run: npm install -g @github/copilot
 
-      # 2. 使用 v3 版本进行推理
+      # 调用大模型（不再传入 COPILOT_GITHUB_TOKEN，使用默认 GITHUB_TOKEN 认证）
       - name: Run AI Inference
         id: ai
         uses: actions/ai-inference@v3
@@ -41,9 +47,8 @@ jobs:
             你现在扮演昔涟。以下是你的角色设定：
             ${{ env.skill }}
           prompt: ${{ github.event.inputs.prompt }}
-        env:
-          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
 
+      # 打印 AI 回复
       - name: Print Response
         run: |
           echo "========== 昔涟的回复 =========="
