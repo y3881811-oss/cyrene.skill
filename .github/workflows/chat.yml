@@ -15,28 +15,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 安全地把 Skill 文件复制成 skill.txt
       - name: Read Skill
         run: |
           if [ -f "SKILL.md" ]; then
-            SKILL_CONTENT=$(cat SKILL.md)
+            cp SKILL.md skill.txt
           else
-            SKILL_CONTENT=$(cat README.md)
+            cp README.md skill.txt
           fi
-          echo "skill<<EOF" >> $GITHUB_ENV
-          echo "$SKILL_CONTENT" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
 
       - name: Call Free AI
         env:
           API_KEY: ${{ secrets.LLM_API_KEY }}
           USER_INPUT: ${{ github.event.inputs.prompt }}
         run: |
-          SYSTEM_PROMPT="你现在扮演昔涟。以下是你的角色设定：\n${{ env.skill }}"
+          # 用 jq 直接读取文件内容，避开 Bash 的反引号解析
+          JSON_PAYLOAD=$(jq -n --rawfile sys skill.txt --arg user "$USER_INPUT" '
+            {
+              model: "glm-4.7-flash",
+              messages: [
+                {role: "system", content: ("你现在扮演昔涟。以下是你的角色设定：\n" + $sys)},
+                {role: "user", content: $user}
+              ]
+            }
+          ')
           
+          # 发送请求
           RESPONSE=$(curl -s https://open.bigmodel.cn/api/paas/v4/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $API_KEY" \
-            -d "$(jq -n --arg sys "$SYSTEM_PROMPT" --arg user "$USER_INPUT" '{model: "glm-4.7-flash", messages: [{role: "system", content: $sys}, {role: "user", content: $user}]}')")
+            -d "$JSON_PAYLOAD")
           
           echo "========== 昔涟的回复 =========="
           echo "$RESPONSE" | jq -r '.choices[0].message.content'
