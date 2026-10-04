@@ -1,4 +1,4 @@
-name: 与昔涟对话 (完全免费版)
+name: 与昔涟对话 (GLM-4.7-Flash 免费版)
 
 on:
   workflow_dispatch:
@@ -17,7 +17,6 @@ jobs:
 
       - name: Read Skill
         run: |
-          # 确认你的 skill 文件叫什么名字，如果是 README.md 请改成 cat README.md
           if [ -f "SKILL.md" ]; then
             SKILL_CONTENT=$(cat SKILL.md)
           else
@@ -34,11 +33,10 @@ jobs:
         run: |
           SYSTEM_PROMPT="你现在扮演昔涟。以下是你的角色设定：\n${{ env.skill }}"
           
-          # 调用智谱的免费模型 glm-4-flash
           RESPONSE=$(curl -s https://open.bigmodel.cn/api/paas/v4/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $API_KEY" \
-            -d "$(jq -n --arg sys "$SYSTEM_PROMPT" --arg user "$USER_INPUT" '{model: "glm-4-flash", messages: [{role: "system", content: $sys}, {role: "user", content: $user}]}')")
+            -d "$(jq -n --arg sys "$SYSTEM_PROMPT" --arg user "$USER_INPUT" '{model: "glm-4.7-flash", messages: [{role: "system", content: $sys}, {role: "user", content: $user}]}')")
           
           echo "========== 昔涟的回复 =========="
           echo "$RESPONSE" | jq -r '.choices[0].message.content'
