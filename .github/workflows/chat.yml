@@ -1,0 +1,44 @@
+name: 与昔涟对话 (GitHub Models 版)
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: '请输入你想对昔涟说的话'
+        required: true
+        default: '你好，我是开拓者，你是谁？'
+
+# 关键：必须声明 models 权限，GITHUB_TOKEN 才能调用模型
+permissions:
+  contents: read
+  models: read
+
+jobs:
+  chat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read Skill
+        run: |
+          SKILL_CONTENT=$(cat SKILL.md)
+          echo "skill<<EOF" >> $GITHUB_ENV
+          echo "$SKILL_CONTENT" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      # 使用 GitHub 官方 AI 推理 Action，无需 API Key
+      - name: Call GitHub Models
+        id: ai
+        uses: actions/ai-inference@v1
+        with:
+          model: 'openai/gpt-4o-mini'
+          system-prompt: |
+            你现在扮演昔涟。以下是你的角色设定：
+            ${{ env.skill }}
+          prompt: ${{ github.event.inputs.prompt }}
+
+      - name: Print Response
+        run: |
+          echo "========== 昔涟的回复 =========="
+          echo "${{ steps.ai.outputs.response }}"
