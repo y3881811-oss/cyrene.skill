@@ -1,4 +1,4 @@
-name: 与昔涟对话 (Copilot Free 版)
+name: 与昔涟对话 (完全免费版)
 
 on:
   workflow_dispatch:
@@ -7,10 +7,6 @@ on:
         description: '请输入你想对昔涟说的话'
         required: true
         default: '你好，我是开拓者，你是谁？'
-
-permissions:
-  contents: read
-  copilot-requests: write
 
 jobs:
   chat:
@@ -21,36 +17,28 @@ jobs:
 
       - name: Read Skill
         run: |
+          # 确认你的 skill 文件叫什么名字，如果是 README.md 请改成 cat README.md
           if [ -f "SKILL.md" ]; then
             SKILL_CONTENT=$(cat SKILL.md)
           else
-            SKILL_CONTENT=$(cat cyrene.skill.md 2>/dev/null || cat README.md)
+            SKILL_CONTENT=$(cat README.md)
           fi
           echo "skill<<EOF" >> $GITHUB_ENV
           echo "$SKILL_CONTENT" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Copilot CLI
-        run: npm install -g @github/copilot
-
-      - name: Run AI Inference
-        id: ai
-        uses: actions/ai-inference@v3
-        with:
-          model: 'gpt-4.1'
-          system-prompt: |
-            你现在扮演昔涟。以下是你的角色设定：
-            ${{ env.skill }}
-          prompt: ${{ github.event.inputs.prompt }}
+      - name: Call Free AI
         env:
-          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
-
-      - name: Print Response
+          API_KEY: ${{ secrets.LLM_API_KEY }}
+          USER_INPUT: ${{ github.event.inputs.prompt }}
         run: |
+          SYSTEM_PROMPT="你现在扮演昔涟。以下是你的角色设定：\n${{ env.skill }}"
+          
+          # 调用智谱的免费模型 glm-4-flash
+          RESPONSE=$(curl -s https://open.bigmodel.cn/api/paas/v4/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $API_KEY" \
+            -d "$(jq -n --arg sys "$SYSTEM_PROMPT" --arg user "$USER_INPUT" '{model: "glm-4-flash", messages: [{role: "system", content: $sys}, {role: "user", content: $user}]}')")
+          
           echo "========== 昔涟的回复 =========="
-          echo "${{ steps.ai.outputs.response }}"
+          echo "$RESPONSE" | jq -r '.choices[0].message.content'
